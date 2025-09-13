@@ -1,0 +1,205 @@
+# Airflow stack; NiFi runs from its own compose and joins the same network: airflow-nifi-network
+ 
+x-airflow-common: &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-quay.io/dlytica_dev/airflow:bootcamp}
+  user: "50000:0"
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ""
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    # Make requests/urllib3 (and curl) trust NiFi cert written by exporter:
+    REQUESTS_CA_BUNDLE: /opt/shared-certs/nifi-ca.pem
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - nifi-ca-vol:/opt/shared-certs:ro
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+    perms-init:
+      condition: service_completed_successfully
+    nifi-cert-exporter:
+      condition: service_completed_successfully
+ 
+services:
+  # Ensure logs volume is owned by uid:gid (Windows/macOS friendly)
+  perms-init:
+    image: alpine:3.20
+    user: "0:0"
+    command: ["/bin/sh","-lc","chown -R 50000:0 /logs && chmod -R u+rwX,g+rwX /logs"]
+    volumes:
+      - airflow-logs:/logs
+    restart: "no"
+    networks: [airflow-nifi-network]
+ 
+  postgres:
+    image: postgres:13
+    ports:
+      - 5430:5432
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    networks: [airflow-nifi-network]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+ 
+  # Exports NiFi's server cert chain to a shared volume used by Airflow
+  nifi-cert-exporter:
+    image: alpine:3
+    container_name: airflow-nifi-cert-exporter
+    networks: [airflow-nifi-network]
+    volumes:
+      - nifi-ca-vol:/out
+    command: >
+      sh -lc '
+        set -euo pipefail
+        apk add --no-cache openssl coreutils >/dev/null
+        echo "Waiting for NiFi TLS to come up..."
+        for i in $(seq 1 90); do
+          if timeout 3 openssl s_client -connect nifi:8443 -servername nifi -showcerts </dev/null 2>/dev/null | grep -q "BEGIN CERTIFICATE"; then
+            break
+          fi
+          sleep 2
+        done
+        echo "Exporting NiFi server certificate chain..."
+        openssl s_client -connect nifi:8443 -servername nifi -showcerts </dev/null 2>/dev/null \
+          | sed -n "/BEGIN CERTIFICATE/,/END CERTIFICATE/p" > /out/nifi-ca.pem
+        chmod 644 /out/nifi-ca.pem
+        echo "Wrote $(wc -c < /out/nifi-ca.pem) bytes to /out/nifi-ca.pem"
+      '
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/nifi-ca.pem && openssl x509 -noout -subject -in /out/nifi-ca.pem"]
+      interval: 5s
+      timeout: 4s
+      retries: 20
+      start_period: 5s
+ 
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports: ["8080:8080"]
+    networks: [airflow-nifi-network]
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+ 
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    networks: [airflow-nifi-network]
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+ 
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    networks: [airflow-nifi-network]
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+ 
+  # Initialize DB, create admin, and ensure nifi_default connection exists
+  airflow-init:
+    <<: *airflow-common
+    user: "50000:0"
+    networks: [airflow-nifi-network]
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: "airflow"
+      _AIRFLOW_WWW_USER_PASSWORD: "airflow"
+      # NiFi creds for the Airflow Connection (separate from Airflow admin)
+      NIFI_CONN_LOGIN: "nifi"
+      NIFI_CONN_PASSWORD: "nifi12345678"
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        echo "Migrating Airflow DB..."
+        airflow db migrate
+ 
+        echo "Ensuring admin user exists..."
+        if ! airflow users list --output json | grep -q "\"username\": \"$${_AIRFLOW_WWW_USER_USERNAME}\""; then
+          airflow users create \
+            --username "$${_AIRFLOW_WWW_USER_USERNAME}" \
+            --password "$${_AIRFLOW_WWW_USER_PASSWORD}" \
+            --firstname Admin --lastname User --role Admin --email admin@example.com
+        else
+          echo "User $${_AIRFLOW_WWW_USER_USERNAME} already exists; skipping."
+        fi
+ 
+        echo "Ensuring Airflow connection nifi_default exists..."
+        if ! airflow connections get nifi_default >/dev/null 2>&1; then
+          airflow connections add nifi_default \
+            --conn-type http \
+            --conn-host nifi \
+            --conn-schema https \
+            --conn-port 8443 \
+            --conn-login "$${NIFI_CONN_LOGIN}" \
+            --conn-password "$${NIFI_CONN_PASSWORD}"
+        else
+          echo "nifi_default already exists."
+        fi
+ 
+        exec airflow version
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+ 
+networks:
+  airflow-nifi-network:
+    external: true   
+ 
+volumes:
+  postgres-db-volume:
+  airflow-logs:
+  nifi-ca-vol:
+ 
+ 
