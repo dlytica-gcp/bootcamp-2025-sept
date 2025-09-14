@@ -60,8 +60,8 @@ ADK_demo/
 
 1. Clone the Repo
 ```
-git clone https://github.com/AashiDutt/Google-Agent-Development-Kit-Demo.git
-cd Google-Agent-Development-Kit-Demo
+git clone [https://github.com/AashiDutt/Google-Agent-Development-Kit-Demo.git](https://github.com/dlytica-gcp/bootcamp-2025-sept.git)
+cd travel_agent/Google-Agent-Development-Kit-Demo
 ```
 2. Setup Environment
 3. 
