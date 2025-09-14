@@ -92,7 +92,4 @@ Launch the frontend:
 streamlit run travel_ui.py
 ```
 
-## 🤖 Contributing
-
-Contributions are welcome! Please open issues or submit PRs with improvements.
 
