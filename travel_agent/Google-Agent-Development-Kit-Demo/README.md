@@ -64,14 +64,13 @@ git clone https://github.com/dlytica-gcp/bootcamp-2025-sept.git
 cd travel_agent/Google-Agent-Development-Kit-Demo
 ```
 2. Setup Environment
-3. 
 ```
 python3 -m venv adk_demo
 source adk_demo/bin/activate
 pip install -r requirements.txt
 ```
 
-Add your OpenAI/Gemini API key:
+3. Add your OpenAI/Gemini API key:
 
 ```
 export OPENAI_API_KEY="your-api-key"
