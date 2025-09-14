@@ -28,7 +28,7 @@ SESSION_ID = "session_001"
 
 async def execute(request):
     # 🔧 Ensure session is created before running the agent
-    session_service.create_session(
+    await session_service.create_session(
         app_name="flight_app",
         user_id=USER_ID,
         session_id=SESSION_ID
