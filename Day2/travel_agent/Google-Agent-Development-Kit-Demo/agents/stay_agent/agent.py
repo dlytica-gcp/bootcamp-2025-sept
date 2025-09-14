@@ -26,7 +26,7 @@ USER_ID = "user_stay"
 SESSION_ID = "session_stay"
 
 async def execute(request):
-    session_service.create_session(
+    await session_service.create_session(
         app_name="stay_app",
         user_id=USER_ID,
         session_id=SESSION_ID
