@@ -3,10 +3,12 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
+import os
+
 
 flight_agent = Agent(
     name="flight_agent",
-    model=LiteLlm("openai/gpt-4o"),
+    model=LiteLlm("openai/gpt-4o",api_key=os.getenv("OPENROUTER_API_KEY"),api_base="https://openrouter.ai/api/v1"),
     description="Suggests flight options for a destination.",
     instruction=(
         "Given a destination, travel dates, and budget, suggest 1-2 realistic flight options. "

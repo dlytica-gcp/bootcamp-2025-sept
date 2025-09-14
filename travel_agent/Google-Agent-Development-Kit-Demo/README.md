@@ -73,7 +73,7 @@ pip install -r requirements.txt
 3. Add your OpenAI/Gemini API key:
 
 ```
-export OPENAI_API_KEY="your-api-key"
+export OPENROUTER_API_KEY="your-openrouter-api-key"
 ```
 ## 🔄 Run the Agents and UI
 
@@ -89,7 +89,7 @@ uvicorn agents.activities_agent.__main__:app --port 8003 &
 Launch the frontend:
 
 ```
-streamlit run streamlit_app.py
+streamlit run travel_ui.py
 ```
 
 ## 🤖 Contributing

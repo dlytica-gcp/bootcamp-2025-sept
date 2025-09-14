@@ -1,3 +1,4 @@
+import os
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
@@ -6,7 +7,7 @@ from google.genai import types
 
 stay_agent = Agent(
     name="stay_agent",
-    model=LiteLlm("openai/gpt-4o"),
+    model=LiteLlm("openai/gpt-4o",api_key=os.getenv("OPENROUTER_API_KEY"),api_base="https://openrouter.ai/api/v1"),
     description="Suggests hotel or stay options for a destination.",
     instruction=(
         "Given a destination, travel dates, and budget, suggest 2-3 hotel or stay options. "

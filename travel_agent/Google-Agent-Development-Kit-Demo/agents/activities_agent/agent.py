@@ -4,10 +4,11 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 import json
+import os 
 
 activities_agent = Agent(
     name="activities_agent",
-    model=LiteLlm("openai/gpt-4o"),
+     model=LiteLlm("openai/gpt-4o",api_key=os.getenv("OPENROUTER_API_KEY"),api_base="https://openrouter.ai/api/v1"),
     description="Suggests interesting activities for the user at a destination.",
     instruction=(
         "Given a destination, dates, and budget, suggest 2-3 engaging tourist or cultural activities. "
