@@ -28,7 +28,7 @@ USER_ID = "user_activities"
 SESSION_ID = "session_activities"
 
 async def execute(request):
-    session_service.create_session(
+    await session_service.create_session(
         app_name="activities_app",
         user_id=USER_ID,
         session_id=SESSION_ID
