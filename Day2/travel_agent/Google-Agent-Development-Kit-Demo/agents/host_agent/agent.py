@@ -24,7 +24,7 @@ SESSION_ID = "session_host"
 
 async def execute(request):
     # Ensure session exists
-    session_service.create_session(
+    await session_service.create_session(
         app_name="host_app",
         user_id=USER_ID,
         session_id=SESSION_ID
